@@ -12,9 +12,17 @@
   "background": {
     "scripts": ["background.js"]
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*","https://*/*"],
+      "js": ["contentscript.js"],
+      "run_at": "document_start"
+    }
+  ],
   "devtools_page": "devtools.html",
   "permissions": [
     "activeTab",
+    "tabs",
     "https://*/*",
 	  "http://*/*"
   ]
