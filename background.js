@@ -23,7 +23,7 @@ function URLClass(url){
     this.setDeadEnd();
     this.setWaitForReceivingTime();
 }
-URLClass.prototype.setDeadEnd() = function(){
+URLClass.prototype.setDeadEnd = function(){
     if( this.url.endsWith(".jpg") || this.url.endsWith(".png") ||
         this.url.endsWith(".jpeg")|| this.url.endsWith(".swf") ||
         this.url.endsWith(".gif") )
@@ -31,7 +31,7 @@ URLClass.prototype.setDeadEnd() = function(){
     else
         this.deadEnd = false;
 }
-URLClass.prototype.setWaitForReceivingTime() = function(){
+URLClass.prototype.setWaitForReceivingTime = function(){
     if( this.url.endsWith(".jpg") || this.url.endsWith(".png") ||
         this.url.endsWith(".jpeg")|| this.url.endsWith(".swf") ||
         this.url.endsWith(".gif") || this.url.endsWith(".js"))
@@ -39,7 +39,7 @@ URLClass.prototype.setWaitForReceivingTime() = function(){
     else
         this.waitForReceivingTime = false;
 }
-URLClass.prototype.toString() = function(){
+URLClass.prototype.toString = function(){
     return "URL:"+this.url+" [DEADEND:"+this.deadEnd+"] [WAITFORRT:"+this.waitForReceivingTime+"]";
 }
 
@@ -114,19 +114,23 @@ var contentScriptListener = function(message, sender, sendResponse) {
                         break;
                     }
                 }
-                console.log("keep "+elements.requests.length+" effective requests");
+                bg.console.log("keep "+elements.requests.length+" effective requests");
                 urlTable[firstURL] = elements;
 
                 /* Sort the requests based on start time and end time */
                 for(var i in elements.requests){
-                    bg.console.log(elements.requests[i].url.toString()+" Totaltime:"+elements.requests[i].totalTime);
+                    //bg.console.log("URL:"+elements.requests[i].url.toString()+" Totaltime:"+elements.requests[i].totalTime);
                     var url = elements.requests[i].url;
                     if(url.waitForReceivingTime){
                         endTime = elements.requests[i].startTime + elements.requests[i].totalTime;
+                        bg.console.log("waitfor receiving time:"+elements.requests[i].totalTime+" url:"+url.url);
                     }
                     else{
                         endTime = elements.requests[i].startTime + elements.requests[i].totalTime -
                                 elements.requests[i].receiveTime;
+                        var tmp = elements.requests[i].totalTime -
+                                elements.requests[i].receiveTime;
+                        bg.console.log("NOT waitfor receiving time:"+tmp+" url:"+url.url);
                     }
                     elements.requests[i].endTime = endTime;         
                     //bg.console.log("receiveTime:"+elements.requests[i].receiveTime+" url:"+elements.requests[i].url);
@@ -165,38 +169,50 @@ var contentScriptListener = function(message, sender, sendResponse) {
                 console.log(sortedRequestsOnStartTime[0].url.toString()+" <==> " + 
                             sortedRequestsOnEndTime[0].url.toString());
                 sortedRequestsOnEndTime[0].degree = 0;
+                sortedRequestsOnEndTime[0].prev = -1;
+                sortedRequestsOnEndTime[0].delta = 0;
                 var j = 0;
 
                 for(var i in sortedRequestsOnStartTime){
                     delta = sortedRequestsOnStartTime[i].startTime -elements.requests[0].startTime;
-                    console.log("SortedStartTime: "+delta + " " + 
-                                sortedRequestsOnStartTime[i].url.toString()+
-                                " "+sortedRequestsOnStartTime.length);
+                    //console.log("SortedStartTime: "+delta + " " + 
+                    //            sortedRequestsOnStartTime[i].url.toString()+
+                    //            " "+sortedRequestsOnStartTime.length);
                     if(i==0)
                         continue;
                     var startTime = sortedRequestsOnStartTime[i].startTime;
                     if(startTime <= stdEndTime){
-                        console.log("ignore req: "+i+" "+sortedRequestsOnStartTime[i].url.toString());
-                        console.log("stdStartTime:"+stdStartTime+" stdEndTime:"+stdEndTime+
+                        bg.console.log("ignore req: "+i+" "+sortedRequestsOnStartTime[i].url.toString());
+                        bg.console.log("stdStartTime:"+stdStartTime+" stdEndTime:"+stdEndTime+
                                     " startTime:"+startTime);
                         continue;
                     }
                     
                     while(j<sortedRequestsOnEndTime.length - 1){
                         if( (startTime>=sortedRequestsOnEndTime[j].endTime) && 
-                            (startTime<sortedRequestsOnEndTime[j+1].endTime)){
-                            var tmpURL = sortedRequestsOnEndTime[i].url.url;
+                            (startTime <sortedRequestsOnEndTime[j+1].endTime)){
+                            var tmpURL = sortedRequestsOnStartTime[i].url.url;
                             item = urlDict[tmpURL];
+                            sortedRequestsOnEndTime[item[1]].prev = j;
+                            if(sortedRequestsOnEndTime[j].url.waitForReceivingTime==false){                   
+                                var halfReceivingTime = sortedRequestsOnEndTime[j].receiveTime /2;
+                                bg.console.log("DEBUG:"+sortedRequestsOnEndTime[j].url.url+" "+halfReceivingTime);
+                                sortedRequestsOnEndTime[item[1]].delta = 
+                                        Math.abs(startTime - 
+                                                sortedRequestsOnEndTime[j].endTime - halfReceivingTime);
+                            }
+                            else{
+                                sortedRequestsOnEndTime[item[1]].delta = startTime -
+                                                sortedRequestsOnEndTime[j].endTime;
+                            }
+                            
                             sortedRequestsOnEndTime[item[1]].degree = 
                                         sortedRequestsOnEndTime[j].degree + 1;
                             break;
-                            //degree = degree < sortedRequestsOnEndTime[item[1]].degree ?  
-                            //            sortedRequestsOnEndTime[item[1]].degree : degree;
                         }
                         else{
                             j++;
                         }
-                        console.log(startTime);
                     }
                 }
                 for(var i in sortedRequestsOnEndTime){
@@ -204,7 +220,11 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     var delta2 = sortedRequestsOnEndTime[i].endTime -elements.requests[0].startTime;
                     var degree = sortedRequestsOnEndTime[i].degree;
                     var tmpURL = sortedRequestsOnEndTime[i].url.url;
-                    console.log("degree: "+degree+" from:"+delta1+" to:"+delta2+" url:"+url);
+                    var prev = sortedRequestsOnEndTime[i].prev;
+                    var delta = sortedRequestsOnEndTime[i].delta;
+                    var prevURL = prev==-1 ? "TOP" :sortedRequestsOnEndTime[prev].url.url;
+                    console.log(i+" DEGREE: "+degree+" [START:"+delta1+" END:"+delta2+
+                                "] [URL:"+tmpURL+"] [PREVURL:"+prev+" "+prevURL+"]"+" [DELTA:"+delta+"]");
                     //console.log("degree: "+degree+" from:"+delta1+" to:"+delta2);
                 }
                 
