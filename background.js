@@ -7,7 +7,8 @@ function URLElements(){
     this.loadTime = 0;
 }
 var elements = new URLElements();
-var urlTable = {}
+var urlTable = {};
+var reqDict = {};
 
 String.prototype.endsWith = function(suffix) {
     return this.indexOf(suffix, this.length - suffix.length) !== -1;
@@ -26,7 +27,7 @@ function URLClass(url){
 URLClass.prototype.setDeadEnd = function(){
     if( this.url.endsWith(".jpg") || this.url.endsWith(".png") ||
         this.url.endsWith(".jpeg")|| this.url.endsWith(".swf") ||
-        this.url.endsWith(".gif") )
+        this.url.endsWith(".gif") || this.url.endsWith(".css"))
         this.deadEnd = true;
     else
         this.deadEnd = false;
@@ -34,7 +35,8 @@ URLClass.prototype.setDeadEnd = function(){
 URLClass.prototype.setWaitForReceivingTime = function(){
     if( this.url.endsWith(".jpg") || this.url.endsWith(".png") ||
         this.url.endsWith(".jpeg")|| this.url.endsWith(".swf") ||
-        this.url.endsWith(".gif") || this.url.endsWith(".js"))
+        this.url.endsWith(".gif") || this.url.endsWith(".js")  ||
+        this.url.endsWith(".css"))
         this.waitForReceivingTime = true;
     else
         this.waitForReceivingTime = false;
@@ -67,6 +69,15 @@ var devToolsListener = function(message, sender, sendResponse) {
     if(message.name == "requestMsg"){
         var request = JSON.parse(message.request);
         //bg.console.log("[devtools] receive request msg "+message.request);
+        
+        var t1 = request.startTime+"";
+        var t2 = request.endTime+"";
+        var key = t1 + request.url + t2;
+        if(key in reqDict){
+            console.log("debug: repeat request removed: "+key);
+            return;
+        }
+        reqDict[key]=true;
         request.url = new URLClass(request.url);
         elements.requests.push(request);
     }
@@ -106,6 +117,7 @@ var contentScriptListener = function(message, sender, sendResponse) {
                  * FIXME: Note that the URL here is not accurate 
                  * because it is not the original URL if redirecion happens 
                  */
+                elements.requests.sort(compareRequestStartTime);
                 bg.console.log("  first url:"+firstURL);
                 for(var index=0; index<elements.requests.length; index++){
                     if(elements.requests[index].url.url == firstURL){
@@ -123,15 +135,17 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     var url = elements.requests[i].url;
                     if(url.waitForReceivingTime){
                         endTime = elements.requests[i].startTime + elements.requests[i].totalTime;
-                        bg.console.log("waitfor receiving time:"+elements.requests[i].totalTime+" url:"+url.url);
+                        //bg.console.log("waitfor receiving time:"+elements.requests[i].totalTime+" url:"+url.url);
                     }
                     else{
                         endTime = elements.requests[i].startTime + elements.requests[i].totalTime -
                                 elements.requests[i].receiveTime;
-                        var tmp = elements.requests[i].totalTime -
-                                elements.requests[i].receiveTime;
-                        bg.console.log("NOT waitfor receiving time:"+tmp+" url:"+url.url);
+                        //var tmp = elements.requests[i].totalTime -
+                        //        elements.requests[i].receiveTime;
+                        //bg.console.log("NOT waitfor receiving time:"+tmp+" url:"+url.url);
                     }
+                    if(endTime == elements.requests[i].startTime)
+                        endTime += 1;
                     elements.requests[i].endTime = endTime;         
                     //bg.console.log("receiveTime:"+elements.requests[i].receiveTime+" url:"+elements.requests[i].url);
                 }
@@ -145,10 +159,18 @@ var contentScriptListener = function(message, sender, sendResponse) {
                  */
                 var urlDict = {};
                 for(var i in sortedRequestsOnStartTime){
-                    var urlOnStartArr = sortedRequestsOnStartTime[i].url.url;
+                    var t1 = sortedRequestsOnStartTime[i].startTime+"";
+                    var t2 = sortedRequestsOnStartTime[i].endTime+"";
+                    var urlOnStartArr = t1+sortedRequestsOnStartTime[i].url.url+t2;
+                    if(urlOnStartArr in urlDict){
+                        bg.console.log("ALERT: repeated url "+urlOnStartArr);
+                    }
                     urlDict[urlOnStartArr] = [i];
                     for(var j in sortedRequestsOnEndTime){
-                        var urlOnEndArr = sortedRequestsOnEndTime[j].url.url;
+                       
+                        var t1 = sortedRequestsOnEndTime[j].startTime+"";
+                        var t2 = sortedRequestsOnEndTime[j].endTime+"";
+                        var urlOnEndArr = t1+sortedRequestsOnEndTime[j].url.url+t2;
                         if(urlOnStartArr == urlOnEndArr){
                             urlDict[urlOnStartArr].push(j);
                             break;
@@ -181,22 +203,26 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     if(i==0)
                         continue;
                     var startTime = sortedRequestsOnStartTime[i].startTime;
+                    
                     if(startTime <= stdEndTime){
                         bg.console.log("ignore req: "+i+" "+sortedRequestsOnStartTime[i].url.toString());
                         bg.console.log("stdStartTime:"+stdStartTime+" stdEndTime:"+stdEndTime+
                                     " startTime:"+startTime);
                         continue;
                     }
+                    var t1 = sortedRequestsOnStartTime[i].startTime+"";
+                    var t2 = sortedRequestsOnStartTime[i].endTime+"";
+                    var tmpURL = t1+sortedRequestsOnStartTime[i].url.url+t2;
+                    item = urlDict[tmpURL];
                     
+                    bg.console.log("Start i:"+i+" j:"+j+" ITEM:"+item[0]+" "+item[1]+" "+tmpURL);
                     while(j<sortedRequestsOnEndTime.length - 1){
                         if( (startTime>=sortedRequestsOnEndTime[j].endTime) && 
                             (startTime <sortedRequestsOnEndTime[j+1].endTime)){
-                            var tmpURL = sortedRequestsOnStartTime[i].url.url;
-                            item = urlDict[tmpURL];
                             sortedRequestsOnEndTime[item[1]].prev = j;
                             if(sortedRequestsOnEndTime[j].url.waitForReceivingTime==false){                   
                                 var halfReceivingTime = sortedRequestsOnEndTime[j].receiveTime /2;
-                                bg.console.log("DEBUG:"+sortedRequestsOnEndTime[j].url.url+" "+halfReceivingTime);
+                                //bg.console.log("DEBUG:"+sortedRequestsOnEndTime[j].url.url+" "+halfReceivingTime);
                                 sortedRequestsOnEndTime[item[1]].delta = 
                                         Math.abs(startTime - 
                                                 sortedRequestsOnEndTime[j].endTime - halfReceivingTime);
@@ -214,6 +240,12 @@ var contentScriptListener = function(message, sender, sendResponse) {
                             j++;
                         }
                     }
+                    if(!("prev" in sortedRequestsOnEndTime[item[1]])){
+                        bg.console.log("NO PREV: "+tmpURL+" index:"+i+" j:"+j+" length:"+sortedRequestsOnEndTime.length);
+                    }
+                    else{
+                        //bg.console.log("SET PREV: "+item[1]+" length:"+sortedRequestsOnEndTime.length);
+                    }
                 }
                 for(var i in sortedRequestsOnEndTime){
                     var delta1 = sortedRequestsOnEndTime[i].startTime -elements.requests[0].startTime;
@@ -222,10 +254,11 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     var tmpURL = sortedRequestsOnEndTime[i].url.url;
                     var prev = sortedRequestsOnEndTime[i].prev;
                     var delta = sortedRequestsOnEndTime[i].delta;
+                    //bg.console.log(i+" prev:"+prev);
                     var prevURL = prev==-1 ? "TOP" :sortedRequestsOnEndTime[prev].url.url;
-                    console.log(i+" DEGREE: "+degree+" [START:"+delta1+" END:"+delta2+
+                    bg.console.log(i+" DEGREE: "+degree+" [START:"+delta1+" END:"+delta2+
                                 "] [URL:"+tmpURL+"] [PREVURL:"+prev+" "+prevURL+"]"+" [DELTA:"+delta+"]");
-                    //console.log("degree: "+degree+" from:"+delta1+" to:"+delta2);
+                    
                 }
                 
               elements = new URLElements();
