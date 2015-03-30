@@ -9,6 +9,7 @@ function URLElements(){
 var elements = new URLElements();
 var urlTable = {};
 var reqDict = {};
+var dependencyGraph = {};
 
 String.prototype.endsWith = function(suffix) {
     return this.indexOf(suffix, this.length - suffix.length) !== -1;
@@ -74,7 +75,7 @@ var devToolsListener = function(message, sender, sendResponse) {
         var t2 = request.endTime+"";
         var key = t1 + request.url + t2;
         if(key in reqDict){
-            console.log("debug: repeat request removed: "+key);
+            bg.console.log("debug: repeat request removed: "+key);
             return;
         }
         reqDict[key]=true;
@@ -96,6 +97,31 @@ function compareRequestStartTime(reqA, reqB){
 
 function compareRequestEndTime(reqA, reqB){
     return reqA.endTime - reqB.endTime;
+}
+function DFVisitor(arr, index, output,preDegree){
+    var degree = arr[index].degree;
+    if(preDegree >= degree){
+        bg.console.log("ERROR find a circul "+output);
+        return ;
+    }
+    var url = arr[index].url.url;
+    var delta = arr[index].delta+"";
+    var nextList = arr[index].nextList;
+    var curOut = "["+url.substring(url.length-5,url.length);
+    curOut += "]["+degree+"degree]["+delta+"] ";
+    output += curOut;
+    
+    if(nextList.length == 0){
+        //bg.console.log(output);
+        return;
+    }
+
+    for(var i in nextList){
+        if(i==index)
+            continue;
+        console.log(nextList+"  "+index+" => "+i);
+        //DFVisitor(arr,i,output);
+    }
 }
 
 var contentScriptListener = function(message, sender, sendResponse) {
@@ -194,6 +220,9 @@ var contentScriptListener = function(message, sender, sendResponse) {
                 sortedRequestsOnEndTime[0].prev = -1;
                 sortedRequestsOnEndTime[0].delta = 0;
                 var j = 0;
+                for(var i in sortedRequestsOnEndTime){
+                    sortedRequestsOnEndTime[i].nextList = [];
+                }
 
                 for(var i in sortedRequestsOnStartTime){
                     delta = sortedRequestsOnStartTime[i].startTime -elements.requests[0].startTime;
@@ -215,7 +244,7 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     var tmpURL = t1+sortedRequestsOnStartTime[i].url.url+t2;
                     item = urlDict[tmpURL];
                     
-                    bg.console.log("Start i:"+i+" j:"+j+" ITEM:"+item[0]+" "+item[1]+" "+tmpURL);
+                    /*bg.console.log("Start i:"+i+" j:"+j+" ITEM:"+item[0]+" "+item[1]+" "+tmpURL);
                     while(j<sortedRequestsOnEndTime.length - 1){
                         if( (startTime>=sortedRequestsOnEndTime[j].endTime) && 
                             (startTime <sortedRequestsOnEndTime[j+1].endTime)){
@@ -239,14 +268,47 @@ var contentScriptListener = function(message, sender, sendResponse) {
                         else{
                             j++;
                         }
+                    }*/
+                    var curIndex = 0;
+                    for(j=0; j<sortedRequestsOnEndTime.length - 1; j++){
+                        if(sortedRequestsOnEndTime[j].url.deadEnd){
+                            continue;
+                        }
+                        else if( startTime >= sortedRequestsOnEndTime[j].endTime){
+                            curIndex = j;
+                        }
+                        else{
+                            break;
+                        }
                     }
+                    sortedRequestsOnEndTime[item[1]].prev = curIndex;
+                    if(sortedRequestsOnEndTime[curIndex].url.waitForReceivingTime==false){                   
+                        var halfReceivingTime = sortedRequestsOnEndTime[j].receiveTime /2;
+                        //bg.console.log("DEBUG:"+sortedRequestsOnEndTime[j].url.url+" "+halfReceivingTime);
+                        sortedRequestsOnEndTime[item[1]].delta = 
+                                Math.abs(startTime - 
+                                        sortedRequestsOnEndTime[curIndex].endTime - 
+                                            sortedRequestsOnEndTime[j].receiveTime);
+                    }
+                    else{
+                        sortedRequestsOnEndTime[item[1]].delta = startTime -
+                                        sortedRequestsOnEndTime[curIndex].endTime;
+                    }
+                    
+                    sortedRequestsOnEndTime[item[1]].degree = 
+                                sortedRequestsOnEndTime[curIndex].degree + 1;
+
+
                     if(!("prev" in sortedRequestsOnEndTime[item[1]])){
-                        bg.console.log("NO PREV: "+tmpURL+" index:"+i+" j:"+j+" length:"+sortedRequestsOnEndTime.length);
+                        bg.console.log("NO PREV: "+tmpURL+" index:"+i+" j:"+curIndex+" deadEnd:"+
+                                sortedRequestsOnEndTime[curIndex].deadEnd+" length:"+sortedRequestsOnEndTime.length);
                     }
                     else{
                         //bg.console.log("SET PREV: "+item[1]+" length:"+sortedRequestsOnEndTime.length);
                     }
                 }
+                
+                var firstIndex = 0;
                 for(var i in sortedRequestsOnEndTime){
                     var delta1 = sortedRequestsOnEndTime[i].startTime -elements.requests[0].startTime;
                     var delta2 = sortedRequestsOnEndTime[i].endTime -elements.requests[0].startTime;
@@ -255,13 +317,31 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     var prev = sortedRequestsOnEndTime[i].prev;
                     var delta = sortedRequestsOnEndTime[i].delta;
                     //bg.console.log(i+" prev:"+prev);
-                    var prevURL = prev==-1 ? "TOP" :sortedRequestsOnEndTime[prev].url.url;
-                    bg.console.log(i+" DEGREE: "+degree+" [START:"+delta1+" END:"+delta2+
-                                "] [URL:"+tmpURL+"] [PREVURL:"+prev+" "+prevURL+"]"+" [DELTA:"+delta+"]");
-                    
+                    var prevURL;
+                    if(tmpURL==firstURL){
+                        bg.console.log("first URL index:"+firstIndex);
+                        firstIndex = i;
+                    }
+                    if(prev == -1){
+                        prevURL = "NONE";
+                    }
+                    else{
+                        prevURL = sortedRequestsOnEndTime[prev].url.url;
+                        //bg.console.log("prev: "+prev);
+                        sortedRequestsOnEndTime[prev].nextList.push(i);
+                    }
+                    /*
+                     *   bg.console.log(i+" DEGREE: "+degree+" [START:"+delta1+" END:"+delta2+
+                     *           "] [URL:"+tmpURL+"] [PREVURL:"+prev+" "+prevURL+"]"+
+                     *           " [DEADEnd:"+sortedRequestsOnEndTime[curIndex].url.deadEnd+"] [DELTA:"+delta+"]");
+                     */
                 }
-                
-              elements = new URLElements();
+                for(var i in sortedRequestsOnEndTime){
+                    var ttt = sortedRequestsOnEndTime[i].url.url;
+                    bg.console.log(i+" "+sortedRequestsOnEndTime[i].degree+" || "+ttt.substring(ttt.length-10,ttt.length)+" next: "+sortedRequestsOnEndTime[i].nextList);
+                }
+                DFVisitor(sortedRequestsOnEndTime, firstIndex, "",-1);
+                elements = new URLElements();
             }// if requests.length > 0
         }//else if eventName==load
     }
