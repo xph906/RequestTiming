@@ -98,29 +98,76 @@ function compareRequestStartTime(reqA, reqB){
 function compareRequestEndTime(reqA, reqB){
     return reqA.endTime - reqB.endTime;
 }
-function DFVisitor(arr, index, output,preDegree){
-    var degree = arr[index].degree;
+
+function GraphVisitor(arr, index){
+    this.arr = arr;
+    this.firstIndex = index;
+    this.DFVisitorList = {};
+    this.largestEstimatedVal = 0;
+    this.largestRealVal = 0;
+}
+GraphVisitor.prototype.DFVisitor = function(index, output,preDegree,totalValue,estimatedValue){
+    var degree = this.arr[index].degree;
     if(preDegree >= degree){
-        bg.console.log("ERROR find a circul "+output);
+        bg.console.log("ERROR find a LOOP "+output);
         return ;
     }
-    var url = arr[index].url.url;
-    var delta = arr[index].delta+"";
-    var nextList = arr[index].nextList;
-    var curOut = "["+url.substring(url.length-5,url.length);
-    curOut += "]["+degree+"degree]["+delta+"] ";
+    
+    var url = this.arr[index].url.url;
+    var delta = "delta:"+this.arr[index].delta;
+    var waitTime = "wait:"+this.arr[index].waitTime;
+    var receiveTime = "receive:"+this.arr[index].receiveTime;
+    var totalTime =  "total:"+this.arr[index].totalTime;
+    var connTime = "conn:"+this.arr[index].connectTime;
+    var blockTime = "blocked:"+this.arr[index].blockedTime;
+    var respBodySize = "bodySize:"+this.arr[index].respBodySize;
+    var allTime = this.arr[index].delta + this.arr[index].totalTime;
+    var debugDelta = 0;
+    totalValue += allTime;
+    if(this.arr[index].waitTime < 1000){
+        estimatedValue += this.arr[index].waitTime * 3;  
+        debugDelta = allTime - this.arr[index].waitTime * 3; 
+    }   
+    else{
+        estimatedValue += this.arr[index].waitTime;
+        debugDelta = allTime - this.arr[index].waitTime ;
+    }
+    //estimatedValue += this.arr[index].waitTime * 2;
+    
+        
+    var allTimeStr = "allTime:"+allTime;
+    var debugDeltaStr = "debugDelta:"+debugDelta;
+    var nextList = this.arr[index].nextList;
+    //bg.console.log("DEBUG: nextList:"+nextList);
+    
+    var curOut = +"["+url.substring(url.length-7,url.length);
+    curOut += " || degree:"+degree+" || "+delta+" || "+connTime;
+    curOut += " || "+waitTime+" || "+receiveTime+" || "+respBodySize+" || "+totalTime+" || "+allTimeStr+
+            " || "+blockTime+" || "+debugDeltaStr+"] \n";
     output += curOut;
     
     if(nextList.length == 0){
-        //bg.console.log(output);
+        bg.console.log("TT:"+totalValue+" ET:"+estimatedValue+"\n"+output+"\n");
+        if(totalValue>this.largestRealVal)
+            this.largestRealVal = totalValue;
+        if(estimatedValue>this.largestEstimatedVal)
+            this.largestEstimatedVal = estimatedValue;
         return;
     }
 
     for(var i in nextList){
-        if(i==index)
+        var nextIndex = nextList[i];
+        if(nextIndex==index)
             continue;
-        console.log(nextList+"  "+index+" => "+i);
-        //DFVisitor(arr,i,output);
+        if(nextIndex in this.DFVisitorList){
+            bg.console.log("ERROR LOOP: "+index+" TO "+nextIndex);
+            continue;
+        }
+        else{
+            this.DFVisitorList[nextIndex] = degree + 1;
+        }
+        //bg.console.log("DF:"+nextList+"  "+index+" => "+i);
+        this.DFVisitor(nextIndex,output,degree,totalValue,estimatedValue);
     }
 }
 
@@ -214,14 +261,18 @@ var contentScriptListener = function(message, sender, sendResponse) {
                 var degree = 0;
                 var stdStartTime = sortedRequestsOnStartTime[0].startTime;
                 var stdEndTime = sortedRequestsOnEndTime[0].endTime;
-                console.log(sortedRequestsOnStartTime[0].url.toString()+" <==> " + 
+                var stdLoadingTime = elements.loadTime - stdStartTime;
+                bg.console.log("Loading Time: "+stdLoadingTime);
+                bg.console.log(sortedRequestsOnStartTime[0].url.toString()+" <==> " + 
                             sortedRequestsOnEndTime[0].url.toString());
                 sortedRequestsOnEndTime[0].degree = 0;
                 sortedRequestsOnEndTime[0].prev = -1;
                 sortedRequestsOnEndTime[0].delta = 0;
+
                 var j = 0;
                 for(var i in sortedRequestsOnEndTime){
                     sortedRequestsOnEndTime[i].nextList = [];
+                    sortedRequestsOnEndTime[i].delta = 0;
                 }
 
                 for(var i in sortedRequestsOnStartTime){
@@ -243,47 +294,21 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     var t2 = sortedRequestsOnStartTime[i].endTime+"";
                     var tmpURL = t1+sortedRequestsOnStartTime[i].url.url+t2;
                     item = urlDict[tmpURL];
-                    
-                    /*bg.console.log("Start i:"+i+" j:"+j+" ITEM:"+item[0]+" "+item[1]+" "+tmpURL);
-                    while(j<sortedRequestsOnEndTime.length - 1){
-                        if( (startTime>=sortedRequestsOnEndTime[j].endTime) && 
-                            (startTime <sortedRequestsOnEndTime[j+1].endTime)){
-                            sortedRequestsOnEndTime[item[1]].prev = j;
-                            if(sortedRequestsOnEndTime[j].url.waitForReceivingTime==false){                   
-                                var halfReceivingTime = sortedRequestsOnEndTime[j].receiveTime /2;
-                                //bg.console.log("DEBUG:"+sortedRequestsOnEndTime[j].url.url+" "+halfReceivingTime);
-                                sortedRequestsOnEndTime[item[1]].delta = 
-                                        Math.abs(startTime - 
-                                                sortedRequestsOnEndTime[j].endTime - halfReceivingTime);
-                            }
-                            else{
-                                sortedRequestsOnEndTime[item[1]].delta = startTime -
-                                                sortedRequestsOnEndTime[j].endTime;
-                            }
-                            
-                            sortedRequestsOnEndTime[item[1]].degree = 
-                                        sortedRequestsOnEndTime[j].degree + 1;
-                            break;
-                        }
-                        else{
-                            j++;
-                        }
-                    }*/
+                  
                     var curIndex = 0;
                     for(j=0; j<sortedRequestsOnEndTime.length - 1; j++){
-                        if(sortedRequestsOnEndTime[j].url.deadEnd){
+                        if(item[1] == j)
                             continue;
-                        }
-                        else if( startTime >= sortedRequestsOnEndTime[j].endTime){
+                        else if(sortedRequestsOnEndTime[j].url.deadEnd)
+                            continue;
+                        else if( startTime >= sortedRequestsOnEndTime[j].endTime)
                             curIndex = j;
-                        }
-                        else{
+                        else
                             break;
-                        }
                     }
                     sortedRequestsOnEndTime[item[1]].prev = curIndex;
                     if(sortedRequestsOnEndTime[curIndex].url.waitForReceivingTime==false){                   
-                        var halfReceivingTime = sortedRequestsOnEndTime[j].receiveTime /2;
+                        //var halfReceivingTime = sortedRequestsOnEndTime[j].receiveTime /2;
                         //bg.console.log("DEBUG:"+sortedRequestsOnEndTime[j].url.url+" "+halfReceivingTime);
                         sortedRequestsOnEndTime[item[1]].delta = 
                                 Math.abs(startTime - 
@@ -326,9 +351,17 @@ var contentScriptListener = function(message, sender, sendResponse) {
                         prevURL = "NONE";
                     }
                     else{
-                        prevURL = sortedRequestsOnEndTime[prev].url.url;
                         //bg.console.log("prev: "+prev);
-                        sortedRequestsOnEndTime[prev].nextList.push(i);
+                        if( (typeof sortedRequestsOnEndTime[prev] == 'undefined') || 
+                            (typeof sortedRequestsOnEndTime[prev].url == 'undefined')){
+                            prevURL = "NONE";
+                            bg.console.log("No Prev: "+i+" "+prev+" len:"+sortedRequestsOnEndTime.length);
+                            bg.console.log("No Prev: "+sortedRequestsOnEndTime[prev]);
+                        }
+                      else{
+                            prevURL = sortedRequestsOnEndTime[prev].url.url;
+                            sortedRequestsOnEndTime[prev].nextList.push(i);
+                        }                    
                     }
                     /*
                      *   bg.console.log(i+" DEGREE: "+degree+" [START:"+delta1+" END:"+delta2+
@@ -338,9 +371,14 @@ var contentScriptListener = function(message, sender, sendResponse) {
                 }
                 for(var i in sortedRequestsOnEndTime){
                     var ttt = sortedRequestsOnEndTime[i].url.url;
-                    bg.console.log(i+" "+sortedRequestsOnEndTime[i].degree+" || "+ttt.substring(ttt.length-10,ttt.length)+" next: "+sortedRequestsOnEndTime[i].nextList);
+                    var dddd = sortedRequestsOnEndTime[i].delta;
+                    var prev = sortedRequestsOnEndTime[i].prev;
+                    //bg.console.log(i+" degree:"+sortedRequestsOnEndTime[i].degree+" [PREV:"+prev+"] || "+dddd+" || "+ttt.substring(ttt.length-10,ttt.length)+" next: "+sortedRequestsOnEndTime[i].nextList);
                 }
-                DFVisitor(sortedRequestsOnEndTime, firstIndex, "",-1);
+                var graphVisitor = new GraphVisitor(sortedRequestsOnEndTime, firstIndex); 
+                graphVisitor.DFVisitorList = {};        
+                graphVisitor.DFVisitor(firstIndex,"",-1,0,0);
+                bg.console.log("LargestRealVal:"+graphVisitor.largestRealVal+" LargestEstimatedVal:"+graphVisitor.largestEstimatedVal);
                 elements = new URLElements();
             }// if requests.length > 0
         }//else if eventName==load

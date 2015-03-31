@@ -22,6 +22,7 @@ chrome.devtools.network.onRequestFinished.addListener(
 		var startTime = new Date(request['startedDateTime']).getTime();
 		var totalTime = request.time;
 		var timings = request.timings;
+		var respBodySize = request.response.bodySize;
 		var requestMsgObject = {};
 		requestMsgObject['url'] = url;
 		requestMsgObject['startTime'] = startTime;
@@ -45,6 +46,7 @@ chrome.devtools.network.onRequestFinished.addListener(
 		requestMsgObject['waitTime'] = timings.wait;
 		requestMsgObject['receiveTime'] = timings.receive;
 		requestMsgObject['sslTime'] = timings.ssl;
+		requestMsgObject['respBodySize'] = respBodySize;
 		var requestMsg = JSON.stringify(requestMsgObject);
 		
 		//alert(startTime);
