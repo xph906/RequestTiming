@@ -373,12 +373,18 @@ var contentScriptListener = function(message, sender, sendResponse) {
                     var ttt = sortedRequestsOnEndTime[i].url.url;
                     var dddd = sortedRequestsOnEndTime[i].delta;
                     var prev = sortedRequestsOnEndTime[i].prev;
-                    //bg.console.log(i+" degree:"+sortedRequestsOnEndTime[i].degree+" [PREV:"+prev+"] || "+dddd+" || "+ttt.substring(ttt.length-10,ttt.length)+" next: "+sortedRequestsOnEndTime[i].nextList);
+                    bg.console.log("SIZE:"+sortedRequestsOnEndTime[i].respBodySize+
+                                    " ReceiveTime:"+sortedRequestsOnEndTime[i].receiveTime+
+                                    " WaitTime:"+sortedRequestsOnEndTime[i].waitTime+
+                                    " URL:"+sortedRequestsOnEndTime[i].url.url);
                 }
+               /* 
                 var graphVisitor = new GraphVisitor(sortedRequestsOnEndTime, firstIndex); 
                 graphVisitor.DFVisitorList = {};        
                 graphVisitor.DFVisitor(firstIndex,"",-1,0,0);
-                bg.console.log("LargestRealVal:"+graphVisitor.largestRealVal+" LargestEstimatedVal:"+graphVisitor.largestEstimatedVal);
+                bg.console.log( "LargestRealVal:"+graphVisitor.largestRealVal + 
+                                " LargestEstimatedVal:"+graphVisitor.largestEstimatedVal);
+                */
                 elements = new URLElements();
             }// if requests.length > 0
         }//else if eventName==load
