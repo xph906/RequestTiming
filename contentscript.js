@@ -19,8 +19,21 @@ var LoadListener = function(event){
 	var url = document.URL;
 	console.log("LoadEvent:"+currentTime);
 	loadTime = currentTime;
-	backgroundPageConnection.postMessage({name:"eventTimeMsg",eventName:"load",time:String(loadTime),url:url});
-	//alert("LoadEvent:"+url);
+	backgroundPageConnection.postMessage({name:"eventTimeMsg",eventName:"load",time:String(loadTime),url:url,path:getURLPath(url),host:getURLHost(url)});
+	console.log("URL:"+url+" PATH:"+getURLPath(url));
+}
+
+
+function getURLPath(url){
+  var a = document.createElement('a');
+  a.href = url;
+  return a.pathname;
+}
+
+function getURLHost(url){
+  var a = document.createElement('a');
+  a.href = url;
+  return a.host;
 }
 
 /*

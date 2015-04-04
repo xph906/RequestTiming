@@ -11,6 +11,11 @@ var urlTable = {};
 var reqDict = {};
 var dependencyGraph = {};
 
+var FileSystemAppID = "lgagklodbbhcljogcdhmjfpgpcohedcp";
+var FSConnector = chrome.runtime.connect(FileSystemAppID);
+FSConnector.postMessage({name:"timingInfo"});
+
+
 String.prototype.endsWith = function(suffix) {
     return this.indexOf(suffix, this.length - suffix.length) !== -1;
 };
@@ -18,32 +23,46 @@ String.prototype.endsWith = function(suffix) {
 /***********************************************
  URLClass
  ***********************************************/
-function URLClass(url){
+function URLClass(url,host,path){
     this.url = url.toLowerCase();
     this.deadEnd = false;
     this.waitForReceivingTime = false;
+    this.pathname = path;
+    this.host = host;
+    //this.parser = document.createElement('a');
+    //this.parser.href = url.toLowerCase();
     this.setDeadEnd();
     this.setWaitForReceivingTime();
 }
 URLClass.prototype.setDeadEnd = function(){
-    if( this.url.endsWith(".jpg") || this.url.endsWith(".png") ||
-        this.url.endsWith(".jpeg")|| this.url.endsWith(".swf") ||
-        this.url.endsWith(".gif") || this.url.endsWith(".css"))
-        this.deadEnd = true;
-    else
-        this.deadEnd = false;
+   /*   if( this.pathname.endsWith(".jpg") || this.pathname.endsWith(".png") ||
+    *        this.pathname.endsWith(".jpeg")|| this.pathname.endsWith(".swf") ||
+    *        this.pathname.endsWith(".gif") || this.pathname.endsWith(".json"))
+    *        this.deadEnd = true;
+    *    else
+    *        this.deadEnd = false;
+    */
+    return false;
 }
 URLClass.prototype.setWaitForReceivingTime = function(){
-    if( this.url.endsWith(".jpg") || this.url.endsWith(".png") ||
-        this.url.endsWith(".jpeg")|| this.url.endsWith(".swf") ||
-        this.url.endsWith(".gif") || this.url.endsWith(".js")  ||
-        this.url.endsWith(".css"))
+    if( this.pathname.endsWith(".jpg") || this.pathname.endsWith(".png") ||
+        this.pathname.endsWith(".jpeg")|| this.pathname.endsWith(".swf") ||
+        this.pathname.endsWith(".gif") || this.pathname.endsWith(".js")  ||
+        this.pathname.endsWith(".css") )
         this.waitForReceivingTime = true;
     else
         this.waitForReceivingTime = false;
 }
 URLClass.prototype.toString = function(){
     return "URL:"+this.url+" [DEADEND:"+this.deadEnd+"] [WAITFORRT:"+this.waitForReceivingTime+"]";
+}
+URLClass.prototype.getPath = function(){
+    //var parser = document.createElement('a');
+    //parser.href = this.url;
+    return this.parser.pathname;
+}
+URLClass.prototype.getHost = function(){
+  return this.parser.host;
 }
 
 
@@ -79,7 +98,7 @@ var devToolsListener = function(message, sender, sendResponse) {
             return;
         }
         reqDict[key]=true;
-        request.url = new URLClass(request.url);
+        request.url = new URLClass(request.url,request.host,request.path);
         elements.requests.push(request);
     }
     else if(message.name == "helloMsg"){
@@ -121,6 +140,7 @@ GraphVisitor.prototype.DFVisitor = function(index, output,preDegree,totalValue,e
     var connTime = "conn:"+this.arr[index].connectTime;
     var blockTime = "blocked:"+this.arr[index].blockedTime;
     var respBodySize = "bodySize:"+this.arr[index].respBodySize;
+    var startTime = "startTime:"+this.arr[index].startTime;
     var allTime = this.arr[index].delta + this.arr[index].totalTime;
     var debugDelta = 0;
     totalValue += allTime;
@@ -133,8 +153,7 @@ GraphVisitor.prototype.DFVisitor = function(index, output,preDegree,totalValue,e
         debugDelta = allTime - this.arr[index].waitTime ;
     }
     //estimatedValue += this.arr[index].waitTime * 2;
-    
-        
+
     var allTimeStr = "allTime:"+allTime;
     var debugDeltaStr = "debugDelta:"+debugDelta;
     var nextList = this.arr[index].nextList;
@@ -328,9 +347,6 @@ var contentScriptListener = function(message, sender, sendResponse) {
                         bg.console.log("NO PREV: "+tmpURL+" index:"+i+" j:"+curIndex+" deadEnd:"+
                                 sortedRequestsOnEndTime[curIndex].deadEnd+" length:"+sortedRequestsOnEndTime.length);
                     }
-                    else{
-                        //bg.console.log("SET PREV: "+item[1]+" length:"+sortedRequestsOnEndTime.length);
-                    }
                 }
                 
                 var firstIndex = 0;
@@ -369,14 +385,21 @@ var contentScriptListener = function(message, sender, sendResponse) {
                      *           " [DEADEnd:"+sortedRequestsOnEndTime[curIndex].url.deadEnd+"] [DELTA:"+delta+"]");
                      */
                 }
+                var rsMsg = JSON.stringify(sortedRequestsOnEndTime);
+                FSConnector.postMessage({name:"TimingResult",firstURL:firstURL, resultArr:rsMsg, loadingTime:stdLoadingTime});
+                chrome.storage.local.set({name:"TimingResult",firstURL:firstURL, resultArr:rsMsg, loadingTime:stdLoadingTime}, 
+                    function() {
+                        // Notify that we saved.
+                        bg.console.log('TimingResults have been saved');
+                    });
                 for(var i in sortedRequestsOnEndTime){
                     var ttt = sortedRequestsOnEndTime[i].url.url;
                     var dddd = sortedRequestsOnEndTime[i].delta;
                     var prev = sortedRequestsOnEndTime[i].prev;
-                    bg.console.log("SIZE:"+sortedRequestsOnEndTime[i].respBodySize+
+                    /*bg.console.log("SIZE:"+sortedRequestsOnEndTime[i].respBodySize+
                                     " ReceiveTime:"+sortedRequestsOnEndTime[i].receiveTime+
                                     " WaitTime:"+sortedRequestsOnEndTime[i].waitTime+
-                                    " URL:"+sortedRequestsOnEndTime[i].url.url);
+                                    " URL:"+sortedRequestsOnEndTime[i].url.url);*/
                 }
                /* 
                 var graphVisitor = new GraphVisitor(sortedRequestsOnEndTime, firstIndex); 

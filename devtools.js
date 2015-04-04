@@ -16,6 +16,19 @@ backgroundPageConnection.postMessage({
 	name: "helloMsg"
 });
 
+
+function getURLPath(url){
+  var a = document.createElement('a');
+  a.href = url;
+  return a.pathname;
+}
+
+function getURLHost(url){
+  var a = document.createElement('a');
+  a.href = url;
+  return a.host;
+}
+
 chrome.devtools.network.onRequestFinished.addListener(
 	function(request) {
 		var url = request.request.url;
@@ -25,6 +38,8 @@ chrome.devtools.network.onRequestFinished.addListener(
 		var respBodySize = request.response.bodySize;
 		var requestMsgObject = {};
 		requestMsgObject['url'] = url;
+		requestMsgObject['path'] = getURLPath(url);
+		requestMsgObject['host'] = getURLHost(url);
 		requestMsgObject['startTime'] = startTime;
 		requestMsgObject['totalTime'] = totalTime;
 	
